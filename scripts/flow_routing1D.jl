@@ -1,4 +1,4 @@
-using Pkg; Pkg.activate("../..")
+# using Pkg; Pkg.activate("../..")
 
 # Implement routing with a FVM
 using Test, Plots, Printf, Statistics
