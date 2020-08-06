@@ -170,8 +170,9 @@ for it = 1:nt
     end
     tim_p = tim_p + dt
     # ploting
-    p1 = heatmap(xc,yc,transpose(D), aspect_ratio=1, xlims=(xc[1], xc[end]), ylims=(yc[1], yc[end]), c=:inferno, title="Zb")
-    display(p1)
+    p1 = heatmap(xc,yc,transpose(Zb*Ĥ), aspect_ratio=1, xlims=(xc[1], xc[end]), ylims=(yc[1], yc[end]), c=:inferno, title="Zb")
+    p2 = heatmap(xc,yc,transpose(D*D̂ + Zb*Ĥ), aspect_ratio=1, xlims=(xc[1], xc[end]), ylims=(yc[1], yc[end]), c=:inferno, title="Zb+D")
+    display(plot(p1, p2))
     # default(size=(700,800))
     # p1 = plot(xc*x̂/1e3, Zb*Ĥ, label="Zb", linewidth=2)
     #     plot!(xc*x̂/1e3, D*D̂+(H+Zb)*Ĥ, label="D+Zb+H", linewidth=2, title=string("Time = ",tim_p*t̂/s2d," days"), framestyle=:box)
