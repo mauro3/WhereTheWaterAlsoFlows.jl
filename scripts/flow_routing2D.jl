@@ -77,9 +77,12 @@ end
 end
 
 @parallel_indices (ix,iy) function set_BCy!(D::Data.Array, val_BC::Data.Number)
-
+    # fixed height
     if (ix<=size(D,1) && iy==1        ) D[ix,iy] = val_BC end
     if (ix<=size(D,1) && iy==size(D,2)) D[ix,iy] = val_BC end
+    # no flux
+    # if (ix<=size(D,1) && iy==1        ) D[ix,iy] = D[ix,iy+1] end
+    # if (ix<=size(D,1) && iy==size(D,2)) D[ix,iy] = D[ix,iy-1] end
     
     return
 end
@@ -110,13 +113,14 @@ ttot   = 1000e10*s2d/t̂ # ttot>>1 && nt=1 steady state
 M      = M̂*s2d
 tim_p  = 0.0
 # numerics
-nx     = 64 # fastest if multiple of 16 (as no overlength here)
-ny     = 64 # fastest if multiple of 16 (as no overlength here)
+nx     = 96 # fastest if multiple of 16 (as no overlength here)
+ny     = 96 # fastest if multiple of 16 (as no overlength here)
 nt     = 1
 nout   = 1000
+nmax   = 50
 ε      = 1e-10     # aboslute tolerance
-damp   = 0.9 #0.9 for nx=100
-dτ_sc  = 16.0 #12.0 for nx=100
+damp   = 0.9  #0.9 for nx=100
+dτ_sc  = 24.0 #12.0 for nx=100
 cn     = 0.0       # crank-Nicolson if cn=0.5 (transient)
 dx, dy = Lx/nx, Ly/ny
 _dx, _dy = 1.0/dx, 1.0/dy
@@ -142,6 +146,7 @@ qDy    = @zeros(nx  ,ny-1)
 RD     = @zeros(nx  ,ny  )
 ∂Ddτ   = @zeros(nx  ,ny  )
 errD   = @zeros(nx  ,ny  )
+max_U  = 1.0;
 err1=[]; err2=[]
 # action
 for it = 1:nt
@@ -153,7 +158,9 @@ for it = 1:nt
         @parallel compute_ϕ!(ϕ, rdh, rr, Zb, D, H)
         @parallel compute_flux!(Ux, Uy, qDx, qDy, k, _dx, _dy, ϕ, D)
         @parallel compute_∂D!(∂D, _dx, _dy, M, qDx, qDy)
-        max_U = max(maximum(abs.(Array(Ux))), maximum(abs.(Array(Uy))))
+        if mod(iter,nmax)==0 || iter==1
+            max_U = max(maximum(abs.(Array(Ux))), maximum(abs.(Array(Uy))))
+        end
         dτ    = 1.0/(1.0/dt + 1.0/(min(dx,dy)/max_U/dτ_sc))
         @parallel update_D!(∂Ddτ, D, damp, dt, cn, dτ, D_o, ∂D, ∂D_o)
         @parallel set_BCx!(D, 0.0)
@@ -170,9 +177,12 @@ for it = 1:nt
     end
     tim_p = tim_p + dt
     # ploting
-    p1 = heatmap(xc,yc,transpose(Zb*Ĥ), aspect_ratio=1, xlims=(xc[1], xc[end]), ylims=(yc[1], yc[end]), c=:inferno, title="Zb")
-    p2 = heatmap(xc,yc,transpose(D*D̂ + Zb*Ĥ), aspect_ratio=1, xlims=(xc[1], xc[end]), ylims=(yc[1], yc[end]), c=:inferno, title="Zb+D")
-    display(plot(p1, p2))
+    xcp = xc*x̂/1e3; ycp = yc*x̂/1e3
+    p1 = heatmap(xcp,ycp,transpose(Zb*Ĥ), aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb")
+    p2 = heatmap(xcp,ycp,transpose(D*D̂ + Zb*Ĥ), aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
+    p3 = plot(xcp[2:end-1], D[2:end-1,Int(round(ny/2))]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
+    l = @layout [a b; c]
+    display(plot(p1, p2, p3, layout = l))
     # default(size=(700,800))
     # p1 = plot(xc*x̂/1e3, Zb*Ĥ, label="Zb", linewidth=2)
     #     plot!(xc*x̂/1e3, D*D̂+(H+Zb)*Ĥ, label="D+Zb+H", linewidth=2, title=string("Time = ",tim_p*t̂/s2d," days"), framestyle=:box)
