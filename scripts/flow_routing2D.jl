@@ -1,5 +1,4 @@
 # using Pkg; Pkg.activate("../..")
-
 const USE_GPU  = false  # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
 const GPU_ID   = 0
 using ParallelStencil
