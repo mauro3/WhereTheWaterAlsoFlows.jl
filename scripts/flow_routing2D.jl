@@ -1,5 +1,5 @@
 # using Pkg; Pkg.activate("../..")
-const USE_GPU  = false  # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
+const USE_GPU  = true  # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
 const GPU_ID   = 0
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
@@ -10,6 +10,7 @@ else
     @init_parallel_stencil(Threads, Float64, 2)
 end
 using Test, Plots, Printf, Statistics, LinearAlgebra
+pyplot()
 
 ################################
 @parallel function swap_old!(D_o::Data.Array, ∂D_o::Data.Array, D::Data.Array, ∂D::Data.Array)
@@ -111,15 +112,16 @@ ttot   = 1000e10*s2d/t̂ # ttot>>1 && nt=1 steady state
 M      = M̂*s2d
 tim_p  = 0.0
 # numerics
-nx     = 256 # fastest if multiple of 16 (as no overlength here)
-ny     = 256 # fastest if multiple of 16 (as no overlength here)
+nx     = 4*32*16 # fastest if multiple of 16 (as no overlength here)
+ny     = nx # fastest if multiple of 16 (as no overlength here)
 nt     = 1
-itrMax = 8e4
+itrMax = 2e5 # for 512: 2e5; for 256: 8e4
 nout   = 1000
 nmax   = 50
 ε      = 1e-8     # aboslute tolerance
 damp   = 0.95  #0.9 for nx=100
-dτ_sc  = 60.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
+dτ_sc  = 400.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
+               # 170 for nx,ny=512
 cn     = 0.0       # crank-Nicolson if cn=0.5 (transient)
 dx, dy = Lx/nx, Ly/ny
 _dx, _dy = 1.0/dx, 1.0/dy
@@ -182,7 +184,7 @@ for it = 1:nt
     p2 = heatmap(xcp,ycp,transpose(D*D̂ + Zb*Ĥ), aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
     p3 = plot(xcp[2:end-1], D[2:end-1,Int(round(ny/2))]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
     l  = @layout [a b; c]
-    display(plot(p1, p2, p3, layout = l))
+    savefig(plot(p1, p2, p3, layout = l), joinpath(@__DIR__, "output/o$it.png"))
     # default(size=(700,800))
     # p1 = plot(xc*x̂/1e3, Zb*Ĥ, label="Zb", linewidth=2)
     #     plot!(xc*x̂/1e3, D*D̂+(H+Zb)*Ĥ, label="D+Zb+H", linewidth=2, title=string("Time = ",tim_p*t̂/s2d," days"), framestyle=:box)
