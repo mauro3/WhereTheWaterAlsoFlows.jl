@@ -1,0 +1,256 @@
+% Created 2020-04-21 Tue 18:33
+% Intended LaTeX compiler: pdflatex
+\documentclass[DIV=13,halfparskip,11pt,headinclude]{scrartcl}
+\usepackage[utf8]{inputenc}
+\newcommand{\un}[1]{\ \textrm{#1}}
+\newcommand{\rd}{\,\mathrm{d}}
+\newcommand{\pd}[2]{\frac{\partial {#1}}{\partial {#2}}}
+\newcommand{\Div}[1]{\nabla \cdot \mathbf{#1}}
+\newcommand{\bm}[1]{\mathbf{#1}}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{grffile}
+\usepackage{longtable}
+\usepackage{wrapfig}
+\usepackage{rotating}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{textcomp}
+\usepackage{amssymb}
+\usepackage{capt-of}
+\usepackage{hyperref}
+
+\author{Mauro A Werder}
+\date{\today}
+\title{}
+\hypersetup{
+ pdfauthor={Mauro A Werder},
+ pdftitle={},
+ pdfkeywords={},
+ pdfsubject={},
+ pdfcreator={Emacs 26.3 (Org mode 9.1.9)},
+ pdflang={English}}
+\begin{document}
+
+\section{Flow routing}
+\label{sec:org5e20d4b}
+
+For flow routing we're after the steady-state water flux \(\mathbf{q}=D
+\mathbf{u}\) at each location (or more like \(q=|\mathbf{q}|\)) for given bed elevation \(z_b\), ice
+thickness \(H\), and source \(M\).  We actually don't care about the water
+layer thickness \(D\), except maybe where it is large, i.e. where there
+are lakes.
+
+The flux obeys the conservation equation
+\begin{equation}
+\frac{\partial D}{\partial t} = M - \nabla \cdot (\mathbf{u} D)
+\end{equation}
+with \(D\) water layer depth, \(M\) source, and \(\mathbf{u}\) depth-averaged flow
+velocity.
+
+\(\mathbf{u}\) is some function of the hydraulic potential gradient
+\begin{equation}
+ \mathbf{u} = f(\nabla \phi)
+\end{equation}
+usually something like Darcy-Weisbach
+\begin{equation}
+ \mathbf{u} = -k D^{\alpha-1}\frac{\nabla \phi}{\sqrt{|\nabla
+\phi|}},
+\end{equation}
+where \(k\) is a conductivity. Or just linear
+\begin{equation}
+ \mathbf{u} = -k \nabla \phi.
+\end{equation}
+
+But maybe to just get the
+steady state water flux, we'll use something else to get, e.g., a good return
+on the CFL condition. (Also, \(\mathbf{u}\) might be adjusted to also take
+deflections due to bed-slope and pressure melting point effects into account.)
+
+The hydraulic potential is
+\begin{equation}
+  \label{eq:phi}
+\phi = \rho_w g z_b + p_w
+\end{equation}
+where the water pressure \(p_w\) can be approximated by assuming it
+equal to ice overburden pressure
+\begin{equation}
+  \label{eq:shreve}
+  p_w= p_i = \rho_i g H,
+\end{equation}
+where \(H\) is ice thickness.
+Adding also the contribution of the water
+sheet to allow flooding of depressions gives
+\begin{equation}
+  p_w =  \rho_w g D + \rho_i g H.
+\end{equation}
+Note that this is usually
+called the "diffusion wave approximation".
+
+Without the \(D\) term in \(\phi\), we get the "kinematic wave"
+\begin{equation}
+\phi^* = \rho_w g z_b + \rho_i g H,
+\end{equation}
+But now water will keep accumulating in local depressions.  Thus this
+is best suited to filled DEMs.
+
+The aim is to recover \(q\) by running Eq.1 to steady-state or to
+directly solve \begin{equation}
+0 = M - \nabla \cdot (\mathbf{u} D).
+\end{equation}
+
+\subsection{Keeping the surface fixed}
+
+Instead of formulating eq.~\eqref{eq:shreve} in terms of
+ice-thickness, it can be formulated in terms of a fixed surface
+elevation
+\begin{equation}
+  p_w = p_i + p_D = \rho_i g (z_s - z_b - D) + \rho_w g D,
+\end{equation}
+where the first term is the ice thickness and the second is the
+contribution of $D$.  This is potentially the more natural approach as
+in the usual setting the surface is given.  This will mean, as $D$
+grows it will replace ice with water.
+
+Inserting into eq.~\eqref{eq:phi} and rearranging gives
+\begin{equation}
+\phi = \rho_w g \left( \frac{\rho_i}{\rho_w}z_s + \left(1- \frac{\rho_i}{\rho_w}\right)( z_b + D)\right).
+\end{equation}
+
+As a side note, probably the surface elevation should be smoothed over
+a length scale of around one ice thickness, as smaller surface
+features will not impact the pressure at the bed.
+
+\subsection{Boundary conditions on $D$}
+
+
+No flow boundary condition is setting $D=0$ as then $q=0$.
+
+Free flow BC is when $\frac{\partial q}{\partial n}=0$, where $n$ is
+the boundary normal.
+
+\subsection{Scaled equations}
+The system
+\begin{align}
+  \frac{\partial D}{\partial t} = M - \nabla \cdot (\mathbf{u} D)\\
+  \phi = \rho_w g (z_b + D) + \rho_i g H\\
+  \mathbf{u} = -k \nabla \phi
+\end{align}
+can be scaled (using $u = \hat u \bar u$, etc., and dropping the bar
+immediately) to
+\begin{align}
+  \frac{\partial D}{\partial t} = M - \nabla \cdot (\mathbf{u} D)\\
+  \phi = z_b + r_{Dz}D + r_\rho H\\
+  \mathbf{u} = - k \nabla \phi
+\end{align}
+where all variables are now dim-less, and the parameters $r_{Dz} =
+\frac{\hat{D}}{\hat z}$, $r_\rho=\frac{\hat \rho_i}{\hat \rho_w}$,
+and $k$ is the unscaled $k$ divided by $\hat k$.  With
+scales
+\begin{center}
+      \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{lllll}
+Scaling var & def & val & units & remarks\\
+\hline
+  $\hat g$ & set to & 9.81 & m/s \\
+  $\hat \rho_w$  & set to & 1000 & kg/m$^3$ \\
+  $\hat \rho_i$  & set to & 910 & kg/m$^3$ \\
+  $\hat M$ & set to & 10$^{-6}$ & m/s & 1mm/day$\sim10^{-5}$, 1mm/a$\sim10^{-8}$\\
+  $\hat D$       & set to & 1   & m \\
+  $\hat \phi$ & set to & $10^7$ & Pa\\
+  $\hat x$ & set to & 10$^6$ & m\\
+    \hline
+    $\hat t$ & $\hat D/\hat M$ & $10^6$ & s\\
+    $\hat z$ & $\hat \phi/(\hat g \hat \rho_w)$ & 1019 & m \\
+    $\hat \Psi$ & $\hat \phi/\hat x$ & 10 & Pa/m\\
+    $\hat u$ & $\hat x / \hat t$ & 1 & m/s\\
+    $\hat k$ & $\hat u / \hat\Psi$ & 0.1 & m$^3$s/kg\\
+  \hline
+  $r_\rho$ & $\hat \rho_i/\hat \rho_w$ & 0.91 & -\\
+  $r_{Dz}$ & $\hat D/\hat z$ & 1/1019 & -\\
+\end{tabular}
+\end{center}
+Note that the dimension-full $k$ can be set arbitrarily (which is good
+as we don't know/care about it).
+
+Similarly,
+\begin{equation}
+\phi = \rho_w g \left( \frac{\rho_i}{\rho_w}z_s + \left(1- \frac{\rho_i}{\rho_w}\right)(
+  z_b + D)\right)
+\end{equation}
+can be scaled to
+\begin{equation}
+\phi = r_\rho z_s + (1- r_\rho)z_b + r_{Dz}(1- r_\rho)D.
+\end{equation}
+The other equations scale identically.
+
+\subsection{Reduction with \(|u|=1\) for the kinematic wave approx.}
+\label{sec:orgbae1021}
+
+As we're only interested in the steady state, we can choose to fix the
+magnitude of \(\mathbf{u}\) to a constant.  What this then entails is
+that \(D\) adjusts such that all the discharge accumulated from upstream
+and the local source can be routed away; in fact \(D=q\).
+
+\begin{itemize}
+\item \(\mathbf{\hat u} = \frac{\nabla \phi^*}{|\nabla \phi^*|}\) can be
+calculated from the DEM
+\item choose \(\Delta t\) such that CFL condition is met
+\item probably use some sort of upwind finite-diffs
+\end{itemize}
+
+\subsection{Reduction with \(|u|=1\) for the diffusion wave approx.}
+\label{sec:org7f4e9a4}
+
+I don't think a trick like this is possible here: with a fixed \(|u|=1\)
+a lake cell with a large \(D\) would then necessarily have a high
+discharge.  However, lake cells with low discharge are well possible.
+
+However, we can use a different eq. for \(\mathbf{u}\) as long as \(u\) is
+a decreasing function of \(\nabla \phi\), e.g. simply
+\begin{equation}
+\mathbf{u} = - \nabla \phi.
+\end{equation}
+
+\subsection{TODO}
+Think about how lakes could be filled faster.  (pre-fill DEM, increase
+source in lakes)
+
+Scheme to keep surface constant and evolve $H$.
+
+\section{Numerics}
+
+Upwind scheme seems needed.
+
+\section{Test cases}
+\label{sec:orgb000489}
+\subsection{1D synthetic test case}
+\label{sec:org1b6b5f1}
+
+See \url{https://shmip.bitbucket.io/instructions.html\#sec-2-2} for DEMs.
+
+Set \(M=1\).
+
+\subsection{2D synthetic test case}
+\label{sec:org08a60fa}
+
+\section{Application to Antarctica}
+\label{sec:orgf1a5640}
+
+Application needs to cover Antarctica at 500m or better resolution.
+Running a domain of 6000km\(^{\text{2}}\), this results in 10\(^{\text{8}}\) grid-points for 500m and
+10\(^{\text{9}}\) for 100m resolution.
+
+This would need a few GB of memory.
+
+\section{Refs}
+\label{sec:org50e7c95}
+Le Brocq et al 2009: \url{https://doi.org/10.3189/002214309790152564}
+
+Diffusion wave eq \url{https://doi.org/10.1016/j.jhydrol.2019.123925}
+\end{document}
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% End:
