@@ -1,4 +1,3 @@
-# using Pkg; Pkg.activate("../..")
 const USE_GPU  = false  # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
 const GPU_ID   = 0
 using ParallelStencil
@@ -111,15 +110,16 @@ ttot   = 1000e10*s2d/t̂ # ttot>>1 && nt=1 steady state
 M      = M̂*s2d
 tim_p  = 0.0
 # numerics
-nx     = 256 # fastest if multiple of 16 (as no overlength here)
-ny     = 256 # fastest if multiple of 16 (as no overlength here)
+res    = 2
+nx     = res*128 # fastest if multiple of 16 (as no overlength here)
+ny     = res*128 # fastest if multiple of 16 (as no overlength here)
 nt     = 1
-itrMax = 8e4
+itrMax = 1e8
 nout   = 1000
-nmax   = 50
+nmax   = 100
 ε      = 1e-8     # aboslute tolerance
-damp   = 0.95  #0.9 for nx=100
-dτ_sc  = 60.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
+damp   = 0.94  #0.9 for nx=100
+dτ_sc  = res*30.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
 cn     = 0.0       # crank-Nicolson if cn=0.5 (transient)
 dx, dy = Lx/nx, Ly/ny
 _dx, _dy = 1.0/dx, 1.0/dy
@@ -158,7 +158,7 @@ for it = 1:nt
         @parallel compute_flux!(Ux, Uy, qDx, qDy, k, _dx, _dy, ϕ, D)
         @parallel compute_∂D!(∂D, _dx, _dy, M, qDx, qDy)
         if mod(iter,nmax)==0 || iter==1
-            max_U = max(maximum(abs.(Array(Ux))), maximum(abs.(Array(Uy))))
+            max_U = max(maximum(abs.(Ux)), maximum(abs.(Uy)))
         end
         dτ = 1.0/(1.0/dt + 1.0/(min(dx,dy)/max_U/dτ_sc))
         @parallel update_D!(∂Ddτ, D, damp, dt, cn, dτ, D_o, ∂D, ∂D_o)
@@ -167,8 +167,8 @@ for it = 1:nt
         # Check errs
         if mod(iter,nout)==0
             @parallel chk_err!(errD, D)
-            ermb  = 1.0./M*dx*dy*(nx-2)*(ny-2) - sum(abs.(Array(qDx[[1, end],2:end-1]))) - sum(abs.(Array(qDy[2:end-1,[1, end]])))
-            push!(err1, maximum(abs.(Array(errD[:])))); push!(err2, abs(ermb))
+            ermb  = 1.0./M*dx*dy*(nx-2)*(ny-2) - sum(abs.(qDx[[1, end],2:end-1])) - sum(abs.(qDy[2:end-1,[1, end]]))
+            push!(err1, maximum(abs.(errD[:]))); push!(err2, abs(ermb))
             err   = err1[end]
             @printf("iter=%d  errD=%1.3e, errMB=%1.3e \n", iter, err1[end], err2[end])
         end
@@ -177,12 +177,13 @@ for it = 1:nt
     tim_p = tim_p + dt
     # ploting
     xcp = xc*x̂/1e3; ycp = yc*x̂/1e3
-    p1 = heatmap(xcp,ycp,transpose(Zb*Ĥ), aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb")
+    p1 = heatmap(xcp, ycp, Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb")
     # p1 = heatmap(transpose(qDx), aspect_ratio=1)
-    p2 = heatmap(xcp,ycp,transpose(D*D̂ + Zb*Ĥ), aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
+    p2 = heatmap(xcp, ycp, D'*D̂ + Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
     p3 = plot(xcp[2:end-1], D[2:end-1,Int(round(ny/2))]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
     l  = @layout [a b; c]
-    display(plot(p1, p2, p3, layout = l))
+    # display(plot(p1, p2, p3, layout = l))
+    savefig(plot(p1, p2, p3, layout = l), joinpath(@__DIR__, "output/o$nx.png"))
     # default(size=(700,800))
     # p1 = plot(xc*x̂/1e3, Zb*Ĥ, label="Zb", linewidth=2)
     #     plot!(xc*x̂/1e3, D*D̂+(H+Zb)*Ĥ, label="D+Zb+H", linewidth=2, title=string("Time = ",tim_p*t̂/s2d," days"), framestyle=:box)
