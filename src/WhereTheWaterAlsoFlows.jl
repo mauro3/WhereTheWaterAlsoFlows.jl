@@ -105,17 +105,38 @@ const rr  = ρ̂i/ρ̂w
 const rdh = D̂/Ĥ    # fixed ice thikness routing
 const s2d = 3600*24
 
-@views function flow_routing2D()
+"""
+
+Inputs:
+- xc, yc: center coordinates (as a range)
+- Zb, H: bed elevation, ice thickness
+- D0: IC for water layer thickness (default ==1)
+"""
+@views function flow_routing2D(xc::AbstractRange, yc::AbstractRange, Zb, H, D0=zero(Zb)+1;
+                               plotyes=true, outdir="")
+
+    nx     = length(xc)
+    ny     = length(yc)
+
+    @assert (nx,ny) == size(Zb) == size(H) == size(D0) "Sized don't match"
+    # fastest if multiple of 16 (as no overlength here)
+    if rem(nx,16)!=0 || rem(ny,16)!=0
+        @warn "Gridpoints not divisible by 16, this leads to slower speed."
+    end
+
+
     # nondim
-    Lx, Ly = 10e3/x̂, 10e3/x̂
+    xcp, ycp = xc, yc # physical coords
+    xc, yc = xc./x̂, yc./x̂
+
+    H = H./H̄
+    Zb = Zb./H̄
     k      = 0.1
     ttot   = 1000e10*s2d/t̂ # ttot>>1 && nt=1 steady state
     M      = M̂*s2d
     tim_p  = 0.0
     # numerics
     res    = 2
-    nx     = res*128 # fastest if multiple of 16 (as no overlength here)
-    ny     = res*128 # fastest if multiple of 16 (as no overlength here)
     nt     = 1
     itrMax = 1e8
     nout   = 1000
@@ -124,19 +145,14 @@ const s2d = 3600*24
     damp   = 0.94  #0.9 for nx=100
     dτ_sc  = res*30.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
     cn     = 0.0       # crank-Nicolson if cn=0.5 (transient)
-    dx, dy = Lx/nx, Ly/ny
+    dx, dy = step(xc), step(yc)
     _dx, _dy = 1.0/dx, 1.0/dy
-    xc     = LinRange(dx/2, Lx-dx/2, nx)
-    yc     = LinRange(dy/2, Ly-dy/2, ny)
     dt     = ttot/nt
-    # initial
-    Zb     = (Lx.-xc)./Lx./100.0 .- 30.0./Ĥ.*exp.(-(xc.-Lx/2.0).^2/(Lx/8.0)^2 .-(yc'.-Ly/2.0).^2/(Ly/8.0)^2)
-    H      = 100.0./Ĥ .- xc.*3.0 .+ 0*yc'
+    # scale Zb and H
     Zb     = Data.Array(Zb)
     H      = Data.Array(H)
-    # H      = (Lx-xc)/Lx/100 + 30/H_s*exp(-(xc-Lx/2).^2/(Lx/8)^2) + (xc + 50)/H_s;
-    D      = 1.0.*@ones(nx,ny)
-    # D      = max(Zb)-Zb + 10;
+    D      = Data.Array(D)
+
     ∂D     = @zeros(nx  ,ny  )
     D_o    = @zeros(nx  ,ny  )
     ∂D_o   = @zeros(nx  ,ny  )
@@ -179,33 +195,31 @@ const s2d = 3600*24
         end
         tim_p = tim_p + dt
         # ploting
-        xcp = xc*x̂/1e3; ycp = yc*x̂/1e3
-        p1 = heatmap(xcp, ycp, Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb")
-        # p1 = heatmap(transpose(qDx), aspect_ratio=1)
-        p2 = heatmap(xcp, ycp, D'*D̂ + Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
-        p3 = plot(xcp[2:end-1], D[2:end-1,Int(round(ny/2))]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
-        l  = @layout [a b; c]
-        # display(plot(p1, p2, p3, layout = l))
-        savefig(plot(p1, p2, p3, layout = l), joinpath(@__DIR__, "output/o$nx.png"))
-        # default(size=(700,800))
-        # p1 = plot(xc*x̂/1e3, Zb*Ĥ, label="Zb", linewidth=2)
-        #     plot!(xc*x̂/1e3, D*D̂+(H+Zb)*Ĥ, label="D+Zb+H", linewidth=2, title=string("Time = ",tim_p*t̂/s2d," days"), framestyle=:box)
-        # p2 = plot(xc*x̂/1e3, ϕ, ylabel="ϕ", linewidth=2, framestyle=:box, legend=false)
-        # p3 = plot(xc[2:end-1]*x̂/1e3, D[2:end-1]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
-        # p4 = plot(xc*x̂/1e3, D*D̂ + Zb*Ĥ, label="D+Zb [m]", linewidth=2)
-        #     plot!(xc*x̂/1e3, Zb*Ĥ, label="Zb [m]", linewidth=2, framestyle=:box)
-        # p5 = plot(xc[2:end]*x̂/1e3, U*û, ylabel="U", linewidth=2, framestyle=:box, legend=false)
-        # p6 = plot(xc[2:end]*x̂/1e3, qD, xlabel="x [km]", ylabel="q", linewidth=2, framestyle=:box, legend=false)
-        # display(plot(p1, p2, p3, p4, p5, p6, layout=(6,1)))
-        # figure(2),clf
-        # semilogy(err1,'Linewidth',LW),hold on
-        # semilogy(err2,'Linewidth',LW),hold off,legend('errD','errMB')
+        if plotyes
+            p1 = heatmap(xcp, ycp, Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb")
+            # p1 = heatmap(transpose(qDx), aspect_ratio=1)
+            p2 = heatmap(xcp, ycp, D'*D̂ + Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
+            p3 = plot(xcp[2:end-1], D[2:end-1,Int(round(ny/2))]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
+            l  = @layout [a b; c]
+            # display(plot(p1, p2, p3, layout = l))
+            outdir!="" & savefig(plot(p1, p2, p3, layout = l), joinpath(outdir, "o$nx.png"))
+            # default(size=(700,800))
+            # p1 = plot(xc*x̂/1e3, Zb*Ĥ, label="Zb", linewidth=2)
+            #     plot!(xc*x̂/1e3, D*D̂+(H+Zb)*Ĥ, label="D+Zb+H", linewidth=2, title=string("Time = ",tim_p*t̂/s2d," days"), framestyle=:box)
+            # p2 = plot(xc*x̂/1e3, ϕ, ylabel="ϕ", linewidth=2, framestyle=:box, legend=false)
+            # p3 = plot(xc[2:end-1]*x̂/1e3, D[2:end-1]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
+            # p4 = plot(xc*x̂/1e3, D*D̂ + Zb*Ĥ, label="D+Zb [m]", linewidth=2)
+            #     plot!(xc*x̂/1e3, Zb*Ĥ, label="Zb [m]", linewidth=2, framestyle=:box)
+            # p5 = plot(xc[2:end]*x̂/1e3, U*û, ylabel="U", linewidth=2, framestyle=:box, legend=false)
+            # p6 = plot(xc[2:end]*x̂/1e3, qD, xlabel="x [km]", ylabel="q", linewidth=2, framestyle=:box, legend=false)
+            # display(plot(p1, p2, p3, p4, p5, p6, layout=(6,1)))
+            # figure(2),clf
+            # semilogy(err1,'Linewidth',LW),hold on
+            # semilogy(err2,'Linewidth',LW),hold off,legend('errD','errMB')
+        end
     end
 
-    return
+    return D*D̂
 end
-
-
-
 
 end
