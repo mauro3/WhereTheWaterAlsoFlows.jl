@@ -1,6 +1,11 @@
 # Download BedMachine
+using Pkg
+Pkg.activate(".")
+using NCDatasets, Plots, Parameters
 
-using NCDatasets, Plots
+
+const rw = 1000.0
+const ri = 910.0
 
 !ispath("data") && mkdir("data")
 
@@ -14,18 +19,32 @@ end
 
 ds = NCDataset(filename)
 
-downscale = 100
+downscale = 2
 
-x = ds["x"][1:downscale:end]
-y = ds["y"][1:downscale:end]
-mask = ds["mask"][1:downscale:end,1:downscale:end]
-mask = (mask.==2) .| (mask.==4) # grounded ice or lake Vostok
-surface = ds["surface"][1:downscale:end,1:downscale:end]
-bed = ds["bed"][1:downscale:end,1:downscale:end]
+x = ds["x"][1:downscale:end];
+y = ds["y"][1:downscale:end];
+x = x[1]:x[2]-x[1]:x[end]
+y = y[1]:y[2]-y[1]:y[end]
+mask = ds["mask"][1:downscale:end,1:downscale:end];
+mask = (mask.==2) .| (mask.==4); # grounded ice or lake Vostok
+surface = ds["surface"][1:downscale:end,1:downscale:end];
+bed = ds["bed"][1:downscale:end,1:downscale:end];
 
 
-surf = copy(surface)
-surf[.!mask] .= NaN
-heatmap(surf)
+surf = copy(surface);
+surf[.!mask] .= NaN;
 
-# now run flow routing with surface and bed
+## Now run flow routing with surface and bed
+
+using WhereTheWaterFlows, PyPlot
+const WWF = WhereTheWaterFlows
+
+@time area, slen, dir, nout, nin, pits, c, bnds = waterflows(rw*bed .+ (surf.-bed)*ri, drain_pits=false);
+
+WWF.plotarea(1:size(area,1), 1:size(area,2), area, pits)
+
+#
+
+using WhereTheWaterAlsoFlows
+#const WWAF = WhereTheWaterAlsoFlows
+D = flow_routing2D(x, y, bed, surface.-bed);
