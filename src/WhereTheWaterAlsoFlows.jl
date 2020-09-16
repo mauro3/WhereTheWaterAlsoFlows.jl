@@ -109,7 +109,7 @@ Inputs:
 - Zb, H: bed elevation, ice thickness
 - D0: IC for water layer thickness (default ==1)
 """
-@views function flow_routing2D(xc::AbstractRange, yc::AbstractRange, Zb, H, D0=zero(Zb)+1;
+@views function flow_routing2D(xc::AbstractRange, yc::AbstractRange, Zb, H, D0=zero(Zb).+1;
                                plotyes=true, outdir="")
 
     nx     = length(xc)
@@ -188,7 +188,7 @@ Inputs:
         p3 = plot(xcp[2:end-1], D[2:end-1,Int(round(ny/2))]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
         l  = @layout [a b; c]
         # display(plot(p1, p2, p3, layout = l))
-        savefig(plot(p1, p2, p3, layout = l), joinpath(@__DIR__, "output/o$nx.png"))
+        savefig(plot(p1, p2, p3, layout = l), joinpath(@__DIR__, "../output/o$nx.png"))
     end
     return D * D̂
 end
