@@ -21,21 +21,25 @@ else
     joinpath("../data", splitdir(url)[2])
 end
 
-ds = NCDataset(filename)
+if !(@isdefined ds)
+    print("Loading NC file ... ")
+    ds = NCDataset(filename)
 
-# downscale = 2 finest possible on 16GB
-# downscale = 1 ok on 32GB ram (needs around 16GB)
-#
-downscale = 200
+    # downscale = 2 finest possible on 16GB
+    # downscale = 1 ok on 32GB ram (needs around 16GB)
+    #
+    downscale = 200
 
-x = ds["x"][1:downscale:end];
-y = ds["y"][1:downscale:end];
-x = x[1]:x[2]-x[1]:x[end]
-y = y[1]:y[2]-y[1]:y[end]
-mask_ = ds["mask"][1:downscale:end,1:downscale:end];
-mask = (mask_.==2) .| (mask_.==4) .| (mask_.==1); # route water over(under): grounded ice or lake Vostok or ice-free-land
-surface = ds["surface"][1:downscale:end,1:downscale:end];
-bed = convert(Matrix{Float32}, ds["bed"][1:downscale:end,1:downscale:end]);
+    x = ds["x"][1:downscale:end];
+    y = ds["y"][1:downscale:end];
+    x = x[1]:x[2]-x[1]:x[end]
+    y = y[1]:y[2]-y[1]:y[end]
+    mask_ = ds["mask"][1:downscale:end,1:downscale:end];
+    mask = (mask_.==2) .| (mask_.==4) .| (mask_.==1); # route water over(under): grounded ice or lake Vostok or ice-free-land
+    surface = ds["surface"][1:downscale:end,1:downscale:end];
+    bed = convert(Matrix{Float32}, ds["bed"][1:downscale:end,1:downscale:end]);
+    println("done")
+end
 
 if smooth_surface>0
     dn = round(Int, smooth_surface/step(x))
