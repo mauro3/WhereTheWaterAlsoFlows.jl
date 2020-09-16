@@ -13,8 +13,10 @@ const ri = 910.0
 
 url = "file://" * homedir() * "/itet-stor/glazioarch/GlacioData/BedMachine_Antarctica/168596330/BedMachineAntarctica_2019-11-05_v01.nc"
 
-filename = if !isfile(joinpath("data", splitdir(url)[2]))
+filename = if !isfile(joinpath("../data", splitdir(url)[2]))
+    print("Downloading data ...")
     download(url, joinpath("../data", splitdir(url)[2]))
+    println("done.")
 else
     joinpath("../data", splitdir(url)[2])
 end
@@ -24,8 +26,7 @@ ds = NCDataset(filename)
 # downscale = 2 finest possible on 16GB
 # downscale = 1 ok on 32GB ram (needs around 16GB)
 #
-downscale = 20
-
+downscale = 200
 
 x = ds["x"][1:downscale:end];
 y = ds["y"][1:downscale:end];
@@ -55,17 +56,18 @@ const WWF = WhereTheWaterFlows
 # mask = mask[inds...]
 # hydpot = (rw*bed .+ (surf.-bed)*ri)[inds...]
 
-hydpot = (rw*bed .+ (surf.-bed)*ri)
+# hydpot = (rw*bed .+ (surf.-bed)*ri)
 # @time area, slen, dir, nout, nin, pits, c, bnds = waterflows( hydpot, drain_pits=true, bnd_as_pits=true);
-area[.!mask] .= NaN;
-WWF.plotarea(1:size(area,1), 1:size(area,2), area, pits)
-if !all(getindex.(Ref(mask), pits).==0)
-    @warn "Not all pits were removed"
-end
+# area[.!mask] .= NaN;
+# WWF.plotarea(1:size(area,1), 1:size(area,2), area, pits)
+# if !all(getindex.(Ref(mask), pits).==0)
+#     @warn "Not all pits were removed"
+# end
 #
 
 using WhereTheWaterAlsoFlows
 #const WWAF = WhereTheWaterAlsoFlows
-D = flow_routing2D(x, y, bed, surface.-bed, plotyes=false);
+
+D = flow_routing2D(x, reverse(y), bed, surface.-bed, mask, mask*100, plotyes=false);
 
 nothing

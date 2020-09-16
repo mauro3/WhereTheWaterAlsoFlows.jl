@@ -4,8 +4,8 @@ module WhereTheWaterAlsoFlows
 
 export flow_routing2D
 
-const USE_GPU  = false  # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
-const GPU_ID   = 0
+const USE_GPU = false  # Use GPU? If this is set false, then the CUDA packages do not need to be installed! :)
+const GPU_ID = 0
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 
@@ -25,6 +25,14 @@ using Plots, Printf, Statistics, LinearAlgebra
 
     return
 end
+
+@parallel function mask_D!(D::Data.Array, Mask::Data.Array)
+
+    @all(D) = @all(D) * @all(Mask)
+
+    return
+end
+
 
 @parallel function chk_err!(errD::Data.Array, D::Data.Array)
 
@@ -109,7 +117,7 @@ Inputs:
 - Zb, H: bed elevation, ice thickness
 - D0: IC for water layer thickness (default ==1)
 """
-@views function flow_routing2D(xc::AbstractRange, yc::AbstractRange, Zb, H, D0=zero(Zb).+1;
+@views function flow_routing2D(xc::AbstractRange, yc::AbstractRange, Zb, H, Mask=zero(Zb).+1, D0=zero(Zb).+1;
                                plotyes=true, outdir="")
 
     nx     = length(xc)
@@ -117,7 +125,7 @@ Inputs:
 
     @assert (nx,ny) == size(Zb) == size(H) == size(D0) "Sizes don't match"
     # fastest if multiple of 16 (as no overlength here)
-    if rem(nx,16)!=0 || rem(ny,16)!=0
+    if USE_GPU && (rem(nx,16)!=0 || rem(ny,16)!=0)
         @warn "Gridpoints not divisible by 16, this leads to slower speed."
     end
 
@@ -129,13 +137,14 @@ Inputs:
     Zb = Data.Array(Zb/Ĥ)
     H = Data.Array(H/Ĥ)
     D = Data.Array(D0/D̂)
+    Mask = Data.Array(Mask)
 
     # parameters
     k      = 0.1
     M      = M̂*s2d
     # numerics
     nt     = 1
-    itrMax = 1e8
+    itrMax = 10000 #1e8
     nout   = 1000
     nmax   = 100
     ε      = 1e-8     # aboslute tolerance
@@ -158,6 +167,7 @@ Inputs:
     iter = 1; err = 2*ε;  max_U = 1.0
     while err > ε && iter < itrMax
     	@parallel def_err!(errD, D)
+        @parallel mask_D!(D, Mask)
     	# flow routing physics
     	@parallel compute_ϕ!(ϕ, rdh, rr, Zb, D, H)
     	@parallel compute_flux!(Ux, Uy, qDx, qDy, k, _dx, _dy, ϕ, D)
@@ -177,6 +187,7 @@ Inputs:
     		err   = err1[end]
     		@printf("iter=%d  errD=%1.3e, errMB=%1.3e \n", iter, err1[end], err2[end])
     	end
+        D = D.*Mask
     	iter+=1
     end
     if plotyes
@@ -187,8 +198,8 @@ Inputs:
         p2 = heatmap(xcp, ycp, D'*D̂ + Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
         p3 = plot(xcp[2:end-1], D[2:end-1,Int(round(ny/2))]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
         l  = @layout [a b; c]
-        # display(plot(p1, p2, p3, layout = l))
-        savefig(plot(p1, p2, p3, layout = l), joinpath(@__DIR__, "../output/o$nx.png"))
+        display(plot(p1, p2, p3, layout = l))
+        # savefig(plot(p1, p2, p3, layout = l), joinpath(@__DIR__, "../output/o$nx.png"))
     end
     return D * D̂
 end
