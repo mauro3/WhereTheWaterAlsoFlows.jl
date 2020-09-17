@@ -26,14 +26,6 @@ using Plots, Printf, Statistics, LinearAlgebra
     return
 end
 
-@parallel function mask_D!(D::Data.Array, Mask::Data.Array)
-
-    @all(D) = @all(D) * @all(Mask)
-
-    return
-end
-
-
 @parallel function chk_err!(errD::Data.Array, D::Data.Array)
 
     @all(errD) = @all(D) - @all(errD)
@@ -41,6 +33,12 @@ end
     return
 end
 
+@parallel function mask_D!(D::Data.Array, Mask::Data.Array)
+
+    @all(D) = @all(D) * @all(Mask)
+
+    return
+end
 
 @parallel function compute_ϕ!(ϕ::Data.Array, rdh::Data.Number, rr::Data.Number, Zb::Data.Array, D::Data.Array, H::Data.Array)
 
@@ -134,25 +132,24 @@ Inputs:
     # nondim
     Lx, Ly = Lx/x̂, Ly/x̂
     xc, yc = xc/x̂, yc/x̂
-    Zb = Data.Array(Zb/Ĥ)
-    H = Data.Array(H/Ĥ)
-    D = Data.Array(D0/D̂)
-    Mask = Data.Array(Mask)
-
+    Zb     = Data.Array(Zb/Ĥ)
+    H      = Data.Array(H/Ĥ)
+    D      = Data.Array(D0/D̂)
+    Mask   = Data.Array(Mask)
     # parameters
     k      = 0.1
     M      = M̂*s2d
     # numerics
     nt     = 1
-    itrMax = 10000 #1e8
+    itrMax = 1e5 #1e8
     nout   = 1000
     nmax   = 100
     ε      = 1e-8     # aboslute tolerance
     damp   = 0.94  #0.9 for nx=100
-    dτ_sc  = nx/128*30.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
+    # dτ_sc  = nx/128*30.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
+    dτ_sc  = nx/128*5.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
     dx, dy = Lx/nx, Ly/ny
     _dx, _dy = 1.0/dx, 1.0/dy
-
     # D      = max(Zb)-Zb + 10;
     ∂D     = @zeros(nx  ,ny  )
     ϕ      = @zeros(nx  ,ny  )
@@ -165,9 +162,9 @@ Inputs:
     err1=[]; err2=[]
     # action
     iter = 1; err = 2*ε;  max_U = 1.0
+    @parallel mask_D!(D, Mask)
     while err > ε && iter < itrMax
-    	@parallel def_err!(errD, D)
-        @parallel mask_D!(D, Mask)
+        @parallel def_err!(errD, D)
     	# flow routing physics
     	@parallel compute_ϕ!(ϕ, rdh, rr, Zb, D, H)
     	@parallel compute_flux!(Ux, Uy, qDx, qDy, k, _dx, _dy, ϕ, D)
@@ -179,29 +176,36 @@ Inputs:
     	@parallel update_D!(∂Ddτ, D, damp, dτ, ∂D)
     	@parallel set_BCx!(D, 0.0)
     	@parallel set_BCy!(D, 0.0)
+        @parallel mask_D!(D, Mask)
     	# Check errs
     	if mod(iter,nout)==0
     		@parallel chk_err!(errD, D)
-    		ermb  = 1.0./M*dx*dy*(nx-2)*(ny-2) - sum(abs.(qDx[[1, end],2:end-1])) - sum(abs.(qDy[2:end-1,[1, end]]))
-    		push!(err1, maximum(abs.(errD[:]))); push!(err2, abs(ermb))
+    		# ermb  = 1.0./M*dx*dy*(nx-2)*(ny-2) - sum(abs.(qDx[[1, end],2:end-1])) - sum(abs.(qDy[2:end-1,[1, end]]))
+    		push!(err1, maximum(abs.(errD[:])));# push!(err2, abs(ermb))
     		err   = err1[end]
-    		@printf("iter=%d  errD=%1.3e, errMB=%1.3e \n", iter, err1[end], err2[end])
+    		# @printf("iter=%d  errD=%1.3e, errMB=%1.3e \n", iter, err1[end], err2[end])
+            @printf("iter=%d  errD=%1.3e \n", iter, err1[end])
     	end
         D = D.*Mask
     	iter+=1
     end
     if plotyes
+        Zb[D.==0.0] .= NaN
+        D[D.==0.0] .= NaN
         # ploting
         xcp = xc*x̂/1e3; ycp = yc*x̂/1e3
         p1 = heatmap(xcp, ycp, Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb")
-        # p1 = heatmap(transpose(qDx), aspect_ratio=1)
-        p2 = heatmap(xcp, ycp, D'*D̂ + Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
-        p3 = plot(xcp[2:end-1], D[2:end-1,Int(round(ny/2))]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
-        l  = @layout [a b; c]
-        display(plot(p1, p2, p3, layout = l))
+        # p1 = heatmap(qDx', aspect_ratio=1)
+        p2 = heatmap(xcp, ycp, D'*D̂, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="D")
+        # p2 = heatmap(xcp, ycp, D'*D̂ + Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
+        # p2 = heatmap(xcp, ycp, errD', aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
+        # p3 = plot(xcp[2:end-1], D[2:end-1,Int(round(ny/2))]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
+        # l  = @layout [a b; c]
+        # display(plot(p1, p2, p3, layout = l))
+        display(plot(p1, p2))
         # savefig(plot(p1, p2, p3, layout = l), joinpath(@__DIR__, "../output/o$nx.png"))
     end
-    return D * D̂
+    return D * D̂, qDx, qDy
 end
 
 end
