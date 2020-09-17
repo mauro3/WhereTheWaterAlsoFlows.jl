@@ -82,6 +82,14 @@ surf[.!mask] .= NaN;
 using WhereTheWaterAlsoFlows
 #const WWAF = WhereTheWaterAlsoFlows
 
-@time D, qDx, qDy = flow_routing2D(x, reverse(y), bed, surface.-bed, mask, mask*1, plotyes=true);
+@time D, qDx, qDy, xcp, ycp = flow_routing2D(x, reverse(y), bed, surface.-bed, mask, mask*1, plotyes=true);
+
+# visu
+qDx_ay = (qDx[:,1:end-1] .+ qDx[:,2:end])*0.5
+qDy_ax = (qDy[1:end-1,:] .+ qDy[2:end,:])*0.5
+Flux   = sqrt.(qDx_ay.^2 .+ qDy_ax.^2)
+Flux[Flux.==0] .= NaN
+display(heatmap(xcp[2:end], ycp[2:end], log10.(Flux'), aspect_ratio=1, xlims=(xcp[2], xcp[end]), ylims=(ycp[2], ycp[end]), c=:viridis, title="log10 ||Flux||"))
+
 
 nothing

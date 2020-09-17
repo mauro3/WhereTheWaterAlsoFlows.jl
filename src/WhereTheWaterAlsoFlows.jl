@@ -205,7 +205,7 @@ Inputs:
         display(plot(p1, p2))
         # savefig(plot(p1, p2, p3, layout = l), joinpath(@__DIR__, "../output/o$nx.png"))
     end
-    return D * D̂, qDx, qDy
+    return D * D̂, qDx, qDy, xcp, ycp
 end
 
 end
