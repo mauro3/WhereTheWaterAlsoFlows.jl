@@ -12,12 +12,28 @@ using ParallelStencil.FiniteDifferences2D
 @static if USE_GPU
     @init_parallel_stencil(CUDA, Float64, 2)
     CUDA.device!(GPU_ID) # select GPU
+    macro sqrt(args...) esc(:(CUDAnative.sqrt($(args...)))) end
 else
     @init_parallel_stencil(Threads, Float64, 2)
+    macro sqrt(args...) esc(:(Base.sqrt($(args...)))) end
 end
 
 using Plots, Printf, Statistics, LinearAlgebra
-
+################################
+function save_infos(Lx, Ly, nx, ny, err, isave, outd)
+    fid=open("$(outd)/0_infos.inf", "w"); @printf(fid,"%f %f %d %d %d %1.3e", Lx, Ly, nx, ny, isave, err); close(fid)
+end
+@static if USE_GPU
+    function save_array(A, A_name, isave, outd)
+        A_tmp = Array(A); A_tmp = convert(Array{Float32}, A_tmp)
+        fid=open("$(outd)/$(isave)_$(A_name).res", "w"); write(fid, A_tmp); close(fid)
+    end
+else
+    function save_array(A, A_name, isave, outd)
+        A_tmp = convert(Array{Float32}, A)
+        fid=open("$(outd)/$(isave)_$(A_name).res", "w"); write(fid, A_tmp); close(fid)
+    end
+end
 ################################
 @parallel function def_err!(errD::Data.Array, D::Data.Array)
 
@@ -92,7 +108,7 @@ end
 
 @parallel function postprocess!(Flux::Data.Array, qDx::Data.Array, qDy::Data.Array)
 
-    @inn(Flux) = (@av_xi(qDx)*@av_xi(qDx) .+ @av_yi(qDy)*@av_yi(qDy))^(1/2)
+    @inn(Flux) = sqrt(@av_xi(qDx)*@av_xi(qDx) .+ @av_yi(qDy)*@av_yi(qDy))
 
     return
 end
@@ -124,15 +140,15 @@ Inputs:
 - D0: IC for water layer thickness (default ==1)
 """
 @views function flow_routing2D(xc::AbstractRange, yc::AbstractRange, Zb, H, Mask=zero(Zb).+1, D0=zero(Zb).+1;
-                               plotyes=false, outdir="")
+                               plotyes=false, saveyes=true, outdir="")
 
     nx     = length(xc)
     ny     = length(yc)
 
     @assert (nx, ny) == size(Zb) == size(H) == size(D0) "Sizes don't match"
     # fastest if multiple of 16 (as no overlength here)
-    if USE_GPU && (rem(nx,16)!=0 || rem(ny,16)!=0)
-        @warn "Gridpoints not divisible by 16, this leads to performance drop."
+    if USE_GPU && (rem(nx,32)!=0 || rem(ny,8)!=0)
+        @warn "Gridpoints not divisible by 32, 8 [x, y], this leads to performance drop."
     end
 
     Lx, Ly = xc[end]-xc[1], yc[end]-yc[1]
@@ -148,14 +164,14 @@ Inputs:
     k      = 0.1
     M      = M̂*s2d
     # numerics
-    nt     = 1
+    nsave  = 5e4
     itrMax = 1e5 #1e8
     nout   = 1000
     nmax   = 100
-    ε      = 1e-8     # aboslute tolerance
-    damp   = 0.94  #0.9 for nx=100
+    ε      = 1e-7     # aboslute tolerance
+    damp   = 0.93  #0.9 for nx=100
     # dτ_sc  = nx/128*30.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
-    dτ_sc  = nx/128*5.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
+    dτ_sc  = nx/128*3.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
     dx, dy = Lx/nx, Ly/ny
     _dx, _dy = 1.0/dx, 1.0/dy
     # D      = max(Zb)-Zb + 10;
@@ -168,9 +184,14 @@ Inputs:
     ∂Ddτ   = @zeros(nx  ,ny  )
     errD   = @zeros(nx  ,ny  )
     Flux   = @zeros(nx  ,ny  )
-    # action
-    iter = 1; err = 2*ε;  max_U = 1.0; err1 = []
+    # preprocess
+    xcp = Array(xc*x̂/1e3); ycp = Array(yc*x̂/1e3)
+    save_array(xcp, "xcp", 0, outdir)
+    save_array(ycp, "ycp", 0, outdir)
+    save_array(Mask, "M" , 0, outdir)
     @parallel mask_D!(D, Mask)
+    # action
+    iter = 1; err = 2*ε;  max_U = 1.0; err1 = []; isave = 1
     while err > ε && iter < itrMax
         @parallel def_err!(errD, D)
     	# flow routing physics
@@ -186,37 +207,35 @@ Inputs:
     	@parallel set_BCy!(D, 0.0)
         @parallel mask_D!(D, Mask)
     	# Check errs
-    	if mod(iter,nout)==0
+    	if mod(iter, nout)==0
     		@parallel chk_err!(errD, D)
-    		# ermb  = 1.0./M*dx*dy*(nx-2)*(ny-2) - sum(abs.(qDx[[1, end],2:end-1])) - sum(abs.(qDy[2:end-1,[1, end]]))
-    		push!(err1, maximum(abs.(errD[:])));# push!(err2, abs(ermb))
-    		err   = err1[end]
-    		# @printf("iter=%d  errD=%1.3e, errMB=%1.3e \n", iter, err1[end], err2[end])
+    		push!(err1, maximum(abs.(errD[:]))); err = err1[end]
             @printf("iter=%d  errD=%1.3e \n", iter, err1[end])
     	end
+        if mod(iter, nsave)==0 || iter==1
+            @parallel postprocess!(Flux, qDx, qDy)
+            save_array(Flux, "F", isave, outdir)
+            save_infos(Lx, Ly, nx, ny, err, isave, outdir)
+            isave+=1
+        end
     	iter+=1
     end
     # postprocess
-    xcp = xc*x̂/1e3; ycp = yc*x̂/1e3
     @parallel postprocess!(Flux, qDx, qDy)
+    save_array(Flux, "F", isave, outdir)
+    save_infos(Lx, Ly, nx, ny, err, isave, outdir)
 
     if plotyes
         Zb[D.==0.0] .= NaN
         D[D.==0.0]  .= NaN
         # ploting    
         p1 = heatmap(xcp, ycp, Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb")
-        # p1 = heatmap(qDx', aspect_ratio=1)
         p2 = heatmap(xcp, ycp, D'*D̂, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="D")
-        # p2 = heatmap(xcp, ycp, D'*D̂ + Zb'*Ĥ, aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
-        # p2 = heatmap(xcp, ycp, errD', aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:inferno, title="Zb+D")
-        # p3 = plot(xcp[2:end-1], D[2:end-1,Int(round(ny/2))]*D̂, ylabel="D [m]", yscale=:log10, linewidth=2, framestyle=:box, legend=false)
-        # l  = @layout [a b; c]
-        # display(plot(p1, p2, p3, layout = l))
         display(plot(p1, p2))
         # savefig(plot(p1, p2, p3, layout = l), joinpath(@__DIR__, "../output/o$nx.png"))
     end
-    
-    return D*D̂, Flux, xcp, ycp
+
+    return Array(D*D̂), Array(Flux), xcp, ycp
 end
 
 end
