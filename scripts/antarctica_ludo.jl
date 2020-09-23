@@ -7,9 +7,10 @@ using NCDatasets, Plots, Parameters
 !ispath("../output") && mkdir("../output")
 
 # smooth_surface = 2000.0 # smoothing radius, in meters
-nsmooth  = 2
+nsm_s  = 2 # surface
+nsm_b  = 0 # bed
 
-run_id = "run_ds_40" # DEBUG: define the output directory within ../output/
+run_id = "run_ds_20" # DEBUG: define the output directory within ../output/
 
 !ispath("../output/$run_id") && mkdir("../output/$run_id")
 
@@ -33,7 +34,7 @@ end
 
     # downscale = 2 finest possible on 16GB
     # downscale = 1 ok on 32GB ram (needs around 16GB)
-    downscale = 40
+    downscale = 30
 
     x  = ds["x"][1:downscale:end]
     y  = ds["y"][1:downscale:end]
@@ -69,13 +70,15 @@ println("grid size: nx=$(length(x)), ny=$(length(y))")
 # end
 
 @views function smooth!(A)
-    A[2:end-1,2:end-1] .= A[2:end-1,2:end-1] .+ 1.0./4.1.*(diff(diff(A[:,2:end-1],dims=1),dims=1) .+ diff(diff(A[2:end-1,:],dims=2),dims=2))
+    A[2:end-1,2:end-1] .= A[2:end-1,2:end-1] .+ 1.0./6.1.*(diff(diff(A[:,2:end-1],dims=1),dims=1) .+ diff(diff(A[2:end-1,:],dims=2),dims=2))
     return
 end
 
-print("Smoothing DEM [$nsmooth step(s)] ... ")
-for ism = 1:nsmooth
+print("Smoothing DEM [surface $nsm_s step(s), bed $nsm_b step(s)] ... ")
+for ism = 1:nsm_s
     smooth!(surface)
+end
+for ism = 1:nsm_b
     smooth!(bed)
 end
 println("done")
@@ -110,7 +113,7 @@ F[.!mask] .= NaN
 
 plt = heatmap(xcp, ycp, log10.(F'), aspect_ratio=1, xlims=(xcp[1], xcp[end]), ylims=(ycp[1], ycp[end]), c=:viridis, framestyle=:box, title="log10 ||Flux||")
 
-savefig(plot(plt, dpi=300), joinpath(@__DIR__, "../output/$run_id/o$(length(x))_final.png"))
+# savefig(plot(plt, dpi=300), joinpath(@__DIR__, "../output/$run_id/o$(length(x))_final.png"))
 
 display(plt)
 
