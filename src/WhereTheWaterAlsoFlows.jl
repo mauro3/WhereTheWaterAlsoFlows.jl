@@ -83,7 +83,7 @@ end
 @parallel function update_D!(∂Ddτ::Data.Array, D::Data.Array, damp::Data.Number, dτ::Data.Number, ∂D::Data.Array)
 
     @all(∂Ddτ) =  damp*@all(∂Ddτ) + @all(∂D)
-    @all(D)    =  @all(D) + dτ*@all(∂Ddτ)
+    @all(D)    =  max(0.0, @all(D) + dτ*@all(∂Ddτ))
 
     return
 end
@@ -161,17 +161,18 @@ Inputs:
     D      = Data.Array(D0/D̂)
     Mask   = Data.Array(Mask)
     # parameters
-    k      = 0.1
+    k      = 100.0
     M      = M̂*s2d
     # numerics
     nsave  = 5e4
-    itrMax = 1e5 #1e8
+    itrMax = 3e4 #1e8
     nout   = 1000
     nmax   = 100
     ε      = 1e-7     # aboslute tolerance
-    damp   = 0.93  #0.9 for nx=100
+    damp   = 0.9  #0.9 for nx=100
     # dτ_sc  = nx/128*30.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
-    dτ_sc  = nx/128*3.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
+    # dτ_sc  = nx/128*3.0 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
+    dτ_sc  = 2.1 #60 for nx,ny=256 #30 for nx,ny=128 #24 for nx,ny=96 #12.0 for nx,ny=64
     dx, dy = Lx/nx, Ly/ny
     _dx, _dy = 1.0/dx, 1.0/dy
     # D      = max(Zb)-Zb + 10;
@@ -209,7 +210,7 @@ Inputs:
     	# Check errs
     	if mod(iter, nout)==0
     		@parallel chk_err!(errD, D)
-    		push!(err1, maximum(abs.(errD[:]))); err = err1[end]
+    		push!(err1, mean(abs.(errD[:]))); err = err1[end]
             @printf("iter=%d  errD=%1.3e \n", iter, err1[end])
     	end
         if mod(iter, nsave)==0 || iter==1
