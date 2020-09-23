@@ -1,5 +1,6 @@
 const Dat = Float32
 using Printf, Statistics, LinearAlgebra, DelimitedFiles, Plots
+# pyplot()
 
 run_id = "run_ds_40"
 
