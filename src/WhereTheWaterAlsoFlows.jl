@@ -12,10 +12,8 @@ using ParallelStencil.FiniteDifferences2D
 @static if USE_GPU
     @init_parallel_stencil(CUDA, Float64, 2)
     CUDA.device!(GPU_ID) # select GPU
-    macro sqrt(args...) esc(:(CUDAnative.sqrt($(args...)))) end
 else
     @init_parallel_stencil(Threads, Float64, 2)
-    macro sqrt(args...) esc(:(Base.sqrt($(args...)))) end
 end
 
 using Plots, Printf, Statistics, LinearAlgebra
